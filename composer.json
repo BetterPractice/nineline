@@ -1,0 +1,36 @@
+{
+    "name": "betterpractice/nineline",
+    "description": "A PHP 9 standard library showcasing value structs, monomorphized generics, extension methods, and modules.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["stdlib", "generics", "structs", "extension-methods", "modules", "php9", "collections"],
+    "homepage": "https://github.com/BetterPractice/nineline",
+    "authors": [
+        {
+            "name": "Holly Schilling"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/BetterPractice/nineline/issues",
+        "source": "https://github.com/BetterPractice/nineline"
+    },
+    "require": {
+        "php": ">=9.0"
+    },
+    "suggest": {
+        "ext-mbstring": "Enables the character-aware string methods length()/truncate()/upperMb()/lowerMb() (StringMbExtensions); the rest of the library works without it."
+    },
+    "autoload": {
+        "psr-4": {
+            "BetterPractice\\NineLine\\": "src/"
+        },
+        "files": [
+            "src/NineLine.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BetterPractice\\NineLine\\Tests\\": "tests/"
+        }
+    }
+}
