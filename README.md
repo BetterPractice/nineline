@@ -124,7 +124,28 @@ $b->toArray();    // [1, 2, 3]
 | `Range` | A half-open `int` range implementing the colored `Iterator` (`start`, `end`, `step`, `count`, `contains`, `toArray`). `foreach` takes the value route, so iterating never consumes the range. |
 | `Func<...TArgs, TReturn>` | A strongly-typed function delegate (C#-style). The wrapped callable's signature is validated against the type arguments **at construction**; `invoke`/`__invoke`/FCC enforce the return type. Is itself `callable`. |
 | `Action<...TArgs>` | A strongly-typed void delegate. Same construction-time signature validation as `Func`. |
-| `ComparisonResult` | An `int`-backed enum (`Ascending`/`Equal`/`Descending`) returned by a sort comparator; `of($a, $b)` compares by `<=>`, `reversed()` flips the order. A plain import, not a module member (see below). |
+| `ComparisonResult` | An `int`-backed enum (`Ascending`/`Equal`/`Descending`) returned by a sort comparator; `of($a, $b)` compares by `<=>`, `reversed()` flips the order. |
+
+**When `Option<T>` earns its keep.** Not as a general replacement for `?T` — PHP
+already has `?T`, `??`, `??=`, and `?->`, and for a plain "might be missing" value
+those are shorter and idiomatic. `Option` is for the case `?T` structurally
+*cannot* express: absence wrapped around a value that may itself be absent, since
+there is no `??T`. Two shapes where that is a bug rather than a preference:
+
+```php
+// PATCH semantics — "caller omitted this field" vs "caller provided it".
+// With ?string, null means both "leave alone" and "clear it".
+function applyPatch(array $row, NL:>Option<string> $nickname): array { … }
+
+// Cache/repository lookups — "no entry" vs "an entry whose value is empty".
+$cached = NL:>Option<NL:>Option<int>>::some(NL:>Option<int>::none());
+```
+
+The collection case is the other one: `Sequence<?int>` is not expressible, so
+`Sequence<NL:>Option<int>>` is the only way to hold maybe-values in a collection.
+If your APIs have none of these shapes, reach for `?T`. `Result<T, E>` is the more
+broadly useful of the two — it carries *why* something failed, which `?T` cannot
+express at all.
 
 `Func`/`Action` are type-safe at **both** ends. At **construction**, the wrapped
 callable is reflected and its declared signature checked against the delegate's
@@ -142,16 +163,12 @@ new NL:>Func<int, string>(fn(int $n): int => $n);    // TypeError: return type (
 
 `Sequence::sort` puts this to work: its comparator is a `Func<T, T, ComparisonResult>`,
 and the parameter is typed as exactly that — passing a `Func` of the wrong element
-type is a `TypeError` at the call. `ComparisonResult` is deliberately a plain
-(non-module) import, because a module-qualified name (`NL:>ComparisonResult`)
-cannot appear inside a generic argument list — and being a `Func` type argument is
-its whole purpose.
+type is a `TypeError` at the call.
 
 ```php
-use BetterPractice\NineLine\Support\ComparisonResult;
-
-$byLength = new NL:>Func<string, string, ComparisonResult>(
-    fn(string $a, string $b): ComparisonResult => ComparisonResult::of(strlen($a), strlen($b))
+$byLength = new NL:>Func<string, string, NL:>ComparisonResult>(
+    fn(string $a, string $b): NL:>ComparisonResult
+        => NL:>ComparisonResult::of(strlen($a), strlen($b))
 );
 $words->sort($byLength);            // shortest first
 $words->sort();                     // or natural order, no comparator
@@ -230,15 +247,21 @@ This is why `Map` offers `mapValues<W>` rather than a full entry map: the
 `Func<Pair<string, V>, Pair<string, W>>` that a key+value map would need is one
 level too deep.
 
-A related consequence: a type that is meant to be *used as a generic argument*
-should not be a module member, because a module-qualified name (`NL:>Foo`) cannot
-appear inside a generic argument list. That is why `ComparisonResult` is a plain
-import rather than an export — its whole job is to be a `Func` type argument.
+A **module-qualified name may itself be a generic argument**, so members nest
+freely and stay gated while doing it:
 
-A type parameter must be a **direct** generic argument, though — it cannot be
-nested inside another generic argument. `Func<V, bool>` is fine;
-`Func<KeyValuePair<string, V>, …>` is not ("type arguments must be concrete"),
-which is why `Map` has no key-and-value entry map.
+```php
+$maybes = new NL:>Sequence<NL:>Option<int>>();      // note: `>>` needs no space
+$maybes->push(NL:>Option<int>::some(1));
+$maybes->push(NL:>Option<int>::none());
+$maybes instanceof NL:>Sequence<NL:>Option<string>>;   // false — the inner argument discriminates
+```
+
+This matters more than it looks: `?int` is **not** a valid generic argument, so
+`Sequence<?int>` cannot be written at all, and `Sequence<Option<int>>` is the only
+way to hold "maybe a value" in a collection. It is also what lets `ComparisonResult`
+be an ordinary export rather than a plain import — being a `Func` type argument no
+longer forces a type out of the module.
 
 One small thing to know: `self` in a **type position** names the bare template,
 not the instantiation, so methods returning "the same instantiation" are typed
@@ -321,6 +344,13 @@ Building this library surfaced two integration gaps between features. Both were
    method were all clean — only the combination corrupted, in the two-level
    signature substitution. Fixed — this is what lets `Sequence::map<U>()`,
    `Sequence::reduce<U>()`, and `Map::mapValues<W>()` take typed delegates.
+4. **Module members could not nest inside a generic argument list** — *fixed*.
+   Neither spelling worked from outside the module: `NL:>Sequence<NL:>Option<int>>`
+   failed to parse, and the plain-name form was refused by the module gate
+   ("Cannot access class … from outside the module"). It worked *inside* the
+   module, so this was purely name resolution. Fixed by allowing module-qualified
+   names as generic type arguments — which also let `ComparisonResult` become an
+   ordinary export instead of being pushed out of the module to stay usable.
 
 ## Layout
 

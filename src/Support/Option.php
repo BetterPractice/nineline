@@ -35,12 +35,18 @@ use RuntimeException;
 struct Option<T>
 {
     /**
-     * @param bool  $present true for Some, false for None
-     * @param mixed $value   the wrapped T when present; null otherwise
+     * The slot is typed `?T` rather than `mixed`: the payload is a real `T` when
+     * present, and the nullability exists solely so `none()` has something to
+     * store. `T` itself is never nullable — `?int` cannot be a generic argument —
+     * so a `Some` can never hold null, and `$present` stays the sole authority on
+     * which case this is.
+     *
+     * @param bool $present true for Some, false for None
+     * @param ?T   $value   the wrapped T when present; null otherwise
      */
     private function __construct(
         private bool $present,
-        private mixed $value,
+        private ?T $value,
     ) {}
 
     /** A present value. */

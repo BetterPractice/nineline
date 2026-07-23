@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use module BetterPractice\NineLine as NL;
-use BetterPractice\NineLine\Support\ComparisonResult;
 
 nl_group('Sequence<T>');
 
@@ -48,20 +47,20 @@ nl_eq([10, 30], $s2->toArray(), 'removeAt spliced');
 $s3 = new NL:>Sequence<int>([3, 1, 2]);
 $s3->sort();
 nl_eq([1, 2, 3], $s3->toArray(), 'sort natural (no comparator)');
-// typed comparator: Func<int, int, ComparisonResult>
-$descending = new NL:>Func<int, int, ComparisonResult>(
-    fn(int $a, int $b): ComparisonResult => ComparisonResult::of($b, $a)
+// typed comparator: Func<int, int, NL:>ComparisonResult>
+$descending = new NL:>Func<int, int, NL:>ComparisonResult>(
+    fn(int $a, int $b): NL:>ComparisonResult => NL:>ComparisonResult::of($b, $a)
 );
 $s3->sort($descending);
 nl_eq([3, 2, 1], $s3->toArray(), 'sort with typed descending comparator');
 // ComparisonResult::of + reversed()
-nl_eq(ComparisonResult::Ascending, ComparisonResult::of(1, 2), 'ComparisonResult::of ascending');
-nl_eq(ComparisonResult::Descending, ComparisonResult::of(1, 2)->reversed(), 'ComparisonResult reversed');
-nl_eq(ComparisonResult::Equal, ComparisonResult::of(5, 5), 'ComparisonResult::of equal');
+nl_eq(NL:>ComparisonResult::Ascending, NL:>ComparisonResult::of(1, 2), 'ComparisonResult::of ascending');
+nl_eq(NL:>ComparisonResult::Descending, NL:>ComparisonResult::of(1, 2)->reversed(), 'ComparisonResult reversed');
+nl_eq(NL:>ComparisonResult::Equal, NL:>ComparisonResult::of(5, 5), 'ComparisonResult::of equal');
 // sort rejects a comparator of the wrong element type
 nl_throws(\TypeError::class, function () {
-    $bad = new NL:>Func<string, string, ComparisonResult>(
-        fn(string $a, string $b): ComparisonResult => ComparisonResult::Equal
+    $bad = new NL:>Func<string, string, NL:>ComparisonResult>(
+        fn(string $a, string $b): NL:>ComparisonResult => NL:>ComparisonResult::Equal
     );
     $wrong = new NL:>Sequence<int>([1, 2]);   // mutating sort needs a variable receiver
     $wrong->sort($bad);
@@ -165,3 +164,21 @@ nl_eq([1, 2, 3, 4, 5, 6], $again, 'foreach is repeatable (value never consumed)'
 
 // getIterator directly
 nl_eq([1, 2, 3, 4, 5, 6], iterator_to_array($nums->getIterator()), 'getIterator');
+
+// a module member nested inside another member's generic argument list
+$maybes = new NL:>Sequence<NL:>Option<int>>();
+$maybes->push(NL:>Option<int>::some(1));
+$maybes->push(NL:>Option<int>::none());
+nl_eq(2, $maybes->count(), 'Sequence<Option<int>> holds both cases');
+nl_eq(1, $maybes->get(0)->get(), 'nested Some unwraps');
+nl_eq(true, $maybes->get(1)->isNone(), 'nested None survives the round trip');
+nl_eq(true, $maybes instanceof NL:>Sequence<NL:>Option<int>>, 'instanceof discriminates on the nested argument');
+nl_eq(false, $maybes instanceof NL:>Sequence<NL:>Option<string>>, 'not instanceof Sequence<Option<string>>');
+nl_throws(\TypeError::class, function () {
+    $seq = new NL:>Sequence<NL:>Option<int>>();
+    $seq->push(NL:>Option<string>::some('x'));
+}, 'nested element type is enforced');
+nl_throws(\TypeError::class, function () {
+    $seq = new NL:>Sequence<NL:>Option<int>>();
+    $seq->push(42);
+}, 'a bare int is rejected where Option<int> is expected');

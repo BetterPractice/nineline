@@ -46,3 +46,17 @@ nl_eq(101, $b->get(), 'map returns a new Option');
 // instanceof with generic args
 nl_eq(true, $some instanceof NL:>Option<int>, 'instanceof Option<int>');
 nl_eq(false, $some instanceof NL:>Option<string>, 'not instanceof Option<string>');
+
+// the payload slot is typed with the substituted T, not `mixed`
+$slot = (new \ReflectionObject(NL:>Option<int>::some(1)))->getProperty('value');
+nl_eq('?int', (string) $slot->getType(), 'Some payload slot is typed ?T (substituted)');
+$slotNone = (new \ReflectionObject(NL:>Option<int>::none()))->getProperty('value');
+nl_eq('?int', (string) $slotNone->getType(), 'None payload slot carries the same ?T');
+
+// nesting: Option<Option<T>> distinguishes "absent" from "present but empty" —
+// the one shape `?T` cannot express, since there is no `??T`.
+$presentButEmpty = NL:>Option<NL:>Option<int>>::some(NL:>Option<int>::none());
+$absent          = NL:>Option<NL:>Option<int>>::none();
+nl_eq(true, $presentButEmpty->isSome(), 'outer Some is present');
+nl_eq(true, $presentButEmpty->get()->isNone(), 'inner None is empty');
+nl_eq(true, $absent->isNone(), 'absent is a distinct state from present-but-empty');

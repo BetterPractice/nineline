@@ -165,9 +165,9 @@ struct Sequence<T> implements Countable, IteratorAggregate
      * orders by a typed comparator `Func<T, T, ComparisonResult>` whose result
      * says where the first element sorts relative to the second.
      *
-     *     use BetterPractice\NineLine\Support\ComparisonResult;
-     *     $seq->sort(new NL:>Func<int, int, ComparisonResult>(
-     *         fn(int $a, int $b): ComparisonResult => ComparisonResult::of($b, $a) // descending
+     *     $seq->sort(new NL:>Func<int, int, NL:>ComparisonResult>(
+     *         fn(int $a, int $b): NL:>ComparisonResult
+     *             => NL:>ComparisonResult::of($b, $a)   // descending
      *     ));
      */
     public function sort(?Func<T, T, ComparisonResult> $comparator = null) mutating: void

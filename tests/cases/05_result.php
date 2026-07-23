@@ -40,3 +40,8 @@ $base = NL:>Result<int, string>::ok(1);
 $mapped = $base->map(fn(int $n) => $n + 9);
 nl_eq(1, $base->unwrap(), 'map does not mutate original Result');
 nl_eq(10, $mapped->unwrap(), 'map returns a new Result');
+
+// the payload slots are typed with the substituted T / E, not `mixed`
+$props = (new \ReflectionObject(NL:>Result<int, string>::ok(1)));
+nl_eq('?int', (string) $props->getProperty('value')->getType(), 'Ok payload slot is typed ?T (substituted)');
+nl_eq('?string', (string) $props->getProperty('error')->getType(), 'Err payload slot is typed ?E (substituted)');

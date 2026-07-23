@@ -37,14 +37,20 @@ use RuntimeException;
 struct Result<T, E>
 {
     /**
-     * @param bool  $ok    true for Ok, false for Err
-     * @param mixed $value the T when Ok; null otherwise
-     * @param mixed $error the E when Err; null otherwise
+     * The slots are typed `?T` / `?E` rather than `mixed`: each carries a real
+     * `T` or `E` in its own case, and the nullability exists solely so the unused
+     * slot has something to store. Neither type parameter can itself be nullable
+     * (`?int` cannot be a generic argument), so `$ok` stays the sole authority on
+     * which case this is.
+     *
+     * @param bool $ok    true for Ok, false for Err
+     * @param ?T   $value the T when Ok; null otherwise
+     * @param ?E   $error the E when Err; null otherwise
      */
     private function __construct(
         private bool $ok,
-        private mixed $value,
-        private mixed $error,
+        private ?T $value,
+        private ?E $error,
     ) {}
 
     /** A successful result carrying $value. */

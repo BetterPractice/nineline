@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace BetterPractice\NineLine\Support;
 
+module BetterPractice\NineLine;
+
 /**
  * The result of comparing two values for ordering.
  *
@@ -16,16 +18,9 @@ namespace BetterPractice\NineLine\Support;
  * `usort` expects (`-1` / `0` / `1`), so a `ComparisonResult` maps straight onto
  * the engine's comparison protocol.
  *
- * Unlike the collections and delegates, this enum is **not** a module member: a
- * module-qualified name (`NL:>ComparisonResult`) cannot appear inside a generic
- * argument list, and this type's whole job is to be a `Func` type argument. It is
- * an ordinary import — `use BetterPractice\NineLine\Support\ComparisonResult;`.
- *
- *     use BetterPractice\NineLine\Support\ComparisonResult;
- *
- *     $byLength = new NL:>Func<string, string, ComparisonResult>(
- *         fn(string $a, string $b): ComparisonResult =>
- *             ComparisonResult::of(strlen($a), strlen($b))
+ *     $byLength = new NL:>Func<string, string, NL:>ComparisonResult>(
+ *         fn(string $a, string $b): NL:>ComparisonResult =>
+ *             NL:>ComparisonResult::of(strlen($a), strlen($b))
  *     );
  *     $words->sort($byLength);
  */
