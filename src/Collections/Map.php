@@ -11,6 +11,8 @@ namespace BetterPractice\NineLine\Collections;
 module BetterPractice\NineLine;
 
 use ArrayIterator;
+use BetterPractice\NineLine\Support\Action;
+use BetterPractice\NineLine\Support\Func;
 use Countable;
 use IteratorAggregate;
 use Traversable;
@@ -114,15 +116,10 @@ struct Map<V> implements Countable, IteratorAggregate
         return new Sequence<string>(array_keys($this->entries));
     }
 
-    /**
-     * The values as a plain list. (A `Sequence<V>` return is not expressible: a
-     * type parameter may not be used as a generic argument in this version.)
-     *
-     * @return list<V>
-     */
-    public function values(): array
+    /** The values as a strongly-typed sequence (mirrors {@see keys()}). */
+    public function values(): Sequence<V>
     {
-        return array_values($this->entries);
+        return new Sequence<V>(array_values($this->entries));
     }
 
     /** @return array<string, V> */
@@ -139,45 +136,55 @@ struct Map<V> implements Countable, IteratorAggregate
     // ---- Functional API (returns a new map; value type preserved) -----------
 
     /**
-     * Run $fn for each key/value pair, for side effects.
-     *
-     * @param callable(string, V): void $fn
+     * Run a typed `Action<string, V>` for each key/value pair, for side effects.
+     * The action's signature is validated when it is constructed, and its
+     * argument types are checked against this map's `V` at the call boundary.
      */
-    public function each(callable $fn): void
+    public function each(Action<string, V> $action): void
     {
         foreach ($this->entries as $key => $value) {
-            $fn($key, $value);
+            $action->invoke($key, $value);
         }
     }
 
     /**
-     * A new `Map<W>` with $fn applied to every value, keys preserved — a
-     * type-changing map (generic method), so the target value type is given
-     * explicitly: `$prices->mapValues<string>(fn(int $c) => "$c cents")`. The
-     * output type `W` is enforced as each value is set.
+     * A new `Map<W>` with a typed `Func<V, W>` applied to every value, keys
+     * preserved — a type-changing map (generic method), so the target value type
+     * is given explicitly:
+     *
+     *     $prices->mapValues<string>(new Func<int, string>(
+     *         fn(int $c): string => "$c cents",
+     *     ));
+     *
+     * The delegate's signature is validated when it is constructed, and its
+     * argument type is checked against this map's `V` at the call boundary.
+     *
+     * This maps values only. A key+value entry map — the natural
+     * `Func<Pair<string, V>, Pair<string, W>>` — is not expressible: a type
+     * parameter must be a *direct* generic argument, never nested inside another
+     * one (see the README).
      *
      * @template W
-     * @param callable(V): W $fn
      */
-    public function mapValues<W>(callable $fn): Map<W>
+    public function mapValues<W>(Func<V, W> $fn): Map<W>
     {
         $out = new Map<W>();
         foreach ($this->entries as $key => $value) {
-            $out->set($key, $fn($value));
+            $out->set($key, $fn->invoke($value));
         }
         return $out;
     }
 
     /**
-     * A new map keeping only pairs for which $predicate returns true.
-     *
-     * @param callable(string, V): bool $predicate
+     * A new map keeping only the pairs for which a typed
+     * `Func<string, V, bool>` predicate returns true. Passing a predicate built
+     * for a different value type is a `TypeError` at the call boundary.
      */
-    public function filter(callable $predicate): static
+    public function filter(Func<string, V, bool> $predicate): static
     {
         $out = new self();
         foreach ($this->entries as $key => $value) {
-            if ($predicate($key, $value)) {
+            if ($predicate->invoke($key, $value)) {
                 $out->set($key, $value);
             }
         }

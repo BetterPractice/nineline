@@ -29,7 +29,13 @@ nl_eq(['the', 'quick', 'brown'], "  the  quick brown  "->tokenize()->toArray(), 
 nl_eq(3, "the quick brown"->tokenize()->count(), 'tokenize result is countable');
 nl_eq(['a', 'b', 'c'], "a\nb\r\nc"->lines()->toArray(), 'lines splits on CR/LF/CRLF');
 // the returned Sequence composes with the collection API
-nl_eq(['A', 'B', 'C'], "a,b,c"->split(",")->map<string>(fn(string $w) => strtoupper($w))->toArray(), 'split result maps');
+nl_eq(
+    ['A', 'B', 'C'],
+    "a,b,c"->split(",")->map<string>(new NL:>Func<string, string>(
+        fn(string $w): string => strtoupper($w),
+    ))->toArray(),
+    'split result maps',
+);
 nl_eq('hello-world-123', "  Hello,  World! 123 "->slug(), 'slug');
 nl_eq('foo-bar', "bar"->ensurePrefix("foo-"), 'ensurePrefix adds');
 nl_eq('foo-bar', "foo-bar"->ensurePrefix("foo-"), 'ensurePrefix idempotent');

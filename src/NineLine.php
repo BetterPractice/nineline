@@ -31,6 +31,8 @@ module NineLine {
     export BetterPractice\NineLine\Support\Func;
     export BetterPractice\NineLine\Support\Action;
     // CallableSignature is an internal helper of Func/Action — intentionally not exported.
+    // ComparisonResult is a plain (non-member) enum: a module-qualified name can't
+    // appear inside a generic argument list, and it exists to be a Func type argument.
 
     // Scalar extension methods — activated by `use module`.
     export extension BetterPractice\NineLine\Extensions\StringExtensions;

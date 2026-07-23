@@ -11,6 +11,9 @@ namespace BetterPractice\NineLine\Collections;
 module BetterPractice\NineLine;
 
 use ArrayIterator;
+use BetterPractice\NineLine\Support\Action;
+use BetterPractice\NineLine\Support\ComparisonResult;
+use BetterPractice\NineLine\Support\Func;
 use Countable;
 use IteratorAggregate;
 use OutOfRangeException;
@@ -130,12 +133,10 @@ struct Sequence<T> implements Countable, IteratorAggregate
     }
 
     /**
-     * Append every item from another sequence (or any iterable). Each item is
-     * routed through push(), so the element type `T` is still enforced.
-     *
-     * A param type of `Sequence<T>` is not expressible in this generics version
-     * (a type parameter may not be used as a generic argument), so this accepts
-     * `iterable` and relies on push()'s runtime check for type safety.
+     * Append every item from an array or any iterable. Each item is routed
+     * through push(), so the element type `T` is enforced per item at runtime.
+     * For concatenating another sequence with compile-checked types, prefer
+     * {@see appendSequence()}.
      *
      * @param iterable<T> $other
      */
@@ -146,14 +147,36 @@ struct Sequence<T> implements Countable, IteratorAggregate
         }
     }
 
-    /** Sort in place using $comparator (defaults to standard comparison). */
-    public function sort(?callable $comparator = null) mutating: void
+    /**
+     * Append every item from another sequence of the same element type. The
+     * argument is typed `Sequence<T>`, so a sequence of a different element type
+     * is a `TypeError` at the call boundary — stronger than append()'s per-item
+     * check. (The items are already known to be `T`, so they are copied directly.)
+     */
+    public function appendSequence(Sequence<T> $other) mutating: void
+    {
+        foreach ($other->toArray() as $item) {
+            $this->items[] = $item;
+        }
+    }
+
+    /**
+     * Sort in place. With no argument, uses PHP's standard ordering; otherwise
+     * orders by a typed comparator `Func<T, T, ComparisonResult>` whose result
+     * says where the first element sorts relative to the second.
+     *
+     *     use BetterPractice\NineLine\Support\ComparisonResult;
+     *     $seq->sort(new NL:>Func<int, int, ComparisonResult>(
+     *         fn(int $a, int $b): ComparisonResult => ComparisonResult::of($b, $a) // descending
+     *     ));
+     */
+    public function sort(?Func<T, T, ComparisonResult> $comparator = null) mutating: void
     {
         $items = $this->items;
         if ($comparator === null) {
             sort($items);
         } else {
-            usort($items, $comparator);
+            usort($items, fn($a, $b) => $comparator->invoke($a, $b)->value);
         }
         $this->items = $items;
     }
@@ -231,15 +254,15 @@ struct Sequence<T> implements Countable, IteratorAggregate
     // ---- Functional API (returns a new sequence; element type preserved) ----
 
     /**
-     * A new sequence containing only items for which $predicate returns true.
-     *
-     * @param callable(T): bool $predicate
+     * A new sequence containing only items for which a typed `Func<T, bool>`
+     * predicate returns true. Passing a predicate built for a different element
+     * type is a `TypeError` at the call boundary.
      */
-    public function filter(callable $predicate): static
+    public function filter(Func<T, bool> $predicate): static
     {
         $out = new self();
         foreach ($this->items as $item) {
-            if ($predicate($item)) {
+            if ($predicate->invoke($item)) {
                 $out->push($item);
             }
         }
@@ -247,46 +270,56 @@ struct Sequence<T> implements Countable, IteratorAggregate
     }
 
     /**
-     * A new `Sequence<U>` with $fn applied to every item — a type-changing map
-     * (generic method), so the target element type is given explicitly:
-     * `$seq->map<string>(fn(int $n) => (string) $n)`. The output type `U` is
-     * enforced as each mapped value is collected.
+     * A new `Sequence<U>` with a typed `Func<T, U>` applied to every item — a
+     * type-changing map (generic method), so the target element type is given
+     * explicitly:
+     *
+     *     $seq->map<string>(new Func<int, string>(
+     *         fn(int $n): string => (string) $n,
+     *     ));
+     *
+     * The output type `U` is enforced as each mapped value is collected.
      *
      * @template U
-     * @param callable(T): U $fn
      */
-    public function map<U>(callable $fn): Sequence<U>
+    public function map<U>(Func<T, U> $fn): Sequence<U>
     {
         $out = new Sequence<U>();
         foreach ($this->items as $item) {
-            $out->push($fn($item));
+            $out->push($fn->invoke($item));
         }
         return $out;
     }
 
     /**
-     * Left fold over the items.
+     * Left fold over the items, carrying an accumulator of type `U`:
      *
-     * @param callable(mixed, T): mixed $fn
+     *     $seq->reduce<int>(new Func<int, int, int>(
+     *         fn(int $sum, int $n): int => $sum + $n,
+     *     ), 0);
+     *
+     * Unlike the untyped idiom, the seed and the return are both `U`, so a fold
+     * that drifts off its accumulator type fails at the call rather than
+     * silently returning something unexpected.
+     *
+     * @template U
      */
-    public function reduce(callable $fn, mixed $initial = null): mixed
+    public function reduce<U>(Func<U, T, U> $fn, U $initial): U
     {
         $accumulator = $initial;
         foreach ($this->items as $item) {
-            $accumulator = $fn($accumulator, $item);
+            $accumulator = $fn->invoke($accumulator, $item);
         }
         return $accumulator;
     }
 
     /**
-     * Run $fn for each item, for side effects.
-     *
-     * @param callable(T): void $fn
+     * Run a typed `Action<T>` for each item, for side effects.
      */
-    public function each(callable $fn): void
+    public function each(Action<T> $action): void
     {
         foreach ($this->items as $item) {
-            $fn($item);
+            $action->invoke($item);
         }
     }
 

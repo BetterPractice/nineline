@@ -23,7 +23,11 @@ nl_eq([2, 3, 4, 5], (2)->upTo(5)->toArray(), 'upTo inclusive range');
 nl_eq(true, (2)->upTo(5) instanceof NL:>Sequence<int>, 'upTo is a Sequence<int>');
 nl_eq([], (5)->upTo(2)->toArray(), 'upTo empty when end < start');
 nl_eq([5, 4, 3], (5)->downTo(3)->toArray(), 'downTo inclusive range');
-nl_eq(15, (1)->upTo(5)->reduce(fn(int $a, int $b) => $a + $b, 0), 'upTo result composes with reduce');
+nl_eq(
+    15,
+    (1)->upTo(5)->reduce<int>(new NL:>Func<int, int, int>(fn(int $a, int $b): int => $a + $b), 0),
+    'upTo result composes with reduce',
+);
 nl_eq(8, (2)->pow(3), 'pow');
 nl_eq(6, (54)->gcd(24), 'gcd');
 nl_eq(4, (-12)->gcd(8), 'gcd of negatives is non-negative');

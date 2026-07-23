@@ -17,9 +17,14 @@ $nums->push("oops");                  // TypeError: Argument #1 must be of type 
 "héllo"->length();                    // 5   (characters — with ext-mbstring)
 (42)->isEven();                       // true
 
-// Extensions hand back the library's own collection types, so they compose:
-"a,b,c"->split(",")->map<string>(fn($w) => strtoupper($w))->toArray();   // ['A', 'B', 'C']
-(1)->upTo(100)->filter(fn($n) => $n % 7 === 0)->count();         // 14
+// Extensions hand back the library's own collection types, so they compose.
+// The collection callbacks are typed delegates, checked at the call boundary:
+"a,b,c"->split(",")->map<string>(
+    new NL:>Func<string, string>(fn(string $w): string => strtoupper($w)),
+)->toArray();                                                    // ['A', 'B', 'C']
+(1)->upTo(100)->filter(
+    new NL:>Func<int, bool>(fn(int $n): bool => $n % 7 === 0),
+)->count();                                                      // 14
 
 // Value-struct monads:
 NL:>Option<int>::some(41)->map(fn($n) => $n + 1)->getOr(0);   // 42
@@ -30,7 +35,9 @@ NL:>Result<int, string>::err("bad")->unwrapOr(0);            // 0
 foreach (new NL:>Range(0, 10, 2) as $i) { /* 0 2 4 6 8 */ }
 
 // Type-changing map (generic method) and typed delegates (variadic pack):
-$labels = (new NL:>Sequence<int>([1, 2, 3]))->map<string>(fn(int $n) => "#$n");
+$labels = (new NL:>Sequence<int>([1, 2, 3]))->map<string>(
+    new NL:>Func<int, string>(fn(int $n): string => "#$n"),
+);
 $add = new NL:>Func<int, int, int>(fn(int $a, int $b): int => $a + $b);   // (int,int): int
 $add->invoke(2, 3);   // 5   — and construction rejects a mismatched callable
 ```
@@ -66,8 +73,28 @@ exported scalar extensions — no separate `use extension` lines.
 
 | Type | Description |
 |------|-------------|
-| `Sequence<T>` | An ordered list, iterable with `foreach`. Mutating methods (`push`, `pop`, `shift`, `unshift`, `set`, `removeAt`, `sort`, `reverse`, `append`, `clear`) update the value in place; functional methods (`filter`, `map<U>`, `reduce`, `reversed`) and withers (`withAppended`, `withoutLast`) return new values. `T` is runtime-enforced. |
-| `Map<V>` | A string-keyed dictionary, iterable with `foreach`: `set`, `get`, `getOr`, `has`, `remove`, `keys`, `values`, `each`, `mapValues<W>`, `filter`. `V` is runtime-enforced. |
+| `Sequence<T>` | An ordered list, iterable with `foreach`. Mutating methods (`push`, `pop`, `shift`, `unshift`, `set`, `removeAt`, `sort`, `reverse`, `append`, `appendSequence`, `clear`) update the value in place; functional methods (`filter`, `map<U>`, `reduce<U>`, `reversed`) and withers (`withAppended`, `withoutLast`) return new values. `T` is runtime-enforced. |
+| `Map<V>` | A string-keyed dictionary, iterable with `foreach`: `set`, `get`, `getOr`, `has`, `remove`. `keys()` → `Sequence<string>` and `values()` → `Sequence<V>`. `V` is runtime-enforced. |
+
+Every callback in the collection API is a **typed delegate**, not a bare
+`callable`, so a mismatched function is a `TypeError` at the call boundary rather
+than a surprise inside the loop:
+
+| Method | Delegate |
+|--------|----------|
+| `Sequence<T>::filter` | `Func<T, bool>` |
+| `Sequence<T>::map<U>` | `Func<T, U>` |
+| `Sequence<T>::reduce<U>` | `Func<U, T, U>`, seeded with a `U` |
+| `Sequence<T>::each` | `Action<T>` |
+| `Sequence<T>::sort` | `?Func<T, T, ComparisonResult>` (natural sort when null) |
+| `Map<V>::filter` | `Func<string, V, bool>` |
+| `Map<V>::mapValues<W>` | `Func<V, W>` |
+| `Map<V>::each` | `Action<string, V>` |
+
+`Map::mapValues<W>` maps **values only**. The natural key+value entry map —
+`Func<Pair<string, V>, Pair<string, W>>` — is not expressible, because a type
+parameter may only be a *direct* generic argument and never nested inside another
+one (see *Generics features and limitations*).
 
 The element type is runtime-enforced **including at construction** — the
 constructor routes every element through the typed `push()`/`set()`, so
@@ -97,6 +124,7 @@ $b->toArray();    // [1, 2, 3]
 | `Range` | A half-open `int` range implementing the colored `Iterator` (`start`, `end`, `step`, `count`, `contains`, `toArray`). `foreach` takes the value route, so iterating never consumes the range. |
 | `Func<...TArgs, TReturn>` | A strongly-typed function delegate (C#-style). The wrapped callable's signature is validated against the type arguments **at construction**; `invoke`/`__invoke`/FCC enforce the return type. Is itself `callable`. |
 | `Action<...TArgs>` | A strongly-typed void delegate. Same construction-time signature validation as `Func`. |
+| `ComparisonResult` | An `int`-backed enum (`Ascending`/`Equal`/`Descending`) returned by a sort comparator; `of($a, $b)` compares by `<=>`, `reversed()` flips the order. A plain import, not a module member (see below). |
 
 `Func`/`Action` are type-safe at **both** ends. At **construction**, the wrapped
 callable is reflected and its declared signature checked against the delegate's
@@ -110,6 +138,23 @@ runtime relies on `ReflectionClass::getGenericTypeArguments()`.
 $toPrice = new NL:>Func<Order, Price>(fn(Order $o): Price => new Price($o->cents / 100));
 $toPrice($order);                                    // Price (also usable as any callable)
 new NL:>Func<int, string>(fn(int $n): int => $n);    // TypeError: return type (int) is not string
+```
+
+`Sequence::sort` puts this to work: its comparator is a `Func<T, T, ComparisonResult>`,
+and the parameter is typed as exactly that — passing a `Func` of the wrong element
+type is a `TypeError` at the call. `ComparisonResult` is deliberately a plain
+(non-module) import, because a module-qualified name (`NL:>ComparisonResult`)
+cannot appear inside a generic argument list — and being a `Func` type argument is
+its whole purpose.
+
+```php
+use BetterPractice\NineLine\Support\ComparisonResult;
+
+$byLength = new NL:>Func<string, string, ComparisonResult>(
+    fn(string $a, string $b): ComparisonResult => ComparisonResult::of(strlen($a), strlen($b))
+);
+$words->sort($byLength);            // shortest first
+$words->sort();                     // or natural order, no comparator
 ```
 
 ### Extensions — methods on the built-in scalars
@@ -127,11 +172,9 @@ new NL:>Func<int, string>(fn(int $n): int => $n);    // TypeError: return type (
 
 Methods that produce a list of a **concrete** element type return a
 `Sequence<…>` rather than a bare `array`, so results flow straight into the
-collection API (`->map()`, `->filter()`, `->count()`, `foreach`). Where the
-element type is a type parameter (`Map::values()` → `list<V>`) or `mixed`
-(`int::times()`, the `array` helpers), a plain `array` is returned — a
-`Sequence<V>` cannot be built, since a type parameter may not be used as a
-generic argument in this version.
+collection API (`->map()`, `->filter()`, `->count()`, `foreach`). A plain `array`
+is returned only where the element type is genuinely `mixed` (`int::times()`, the
+`array` helpers) and a `Sequence<…>` would carry no more information.
 
 Extension methods bind their receiver to a declared variable (`$s`, `$n`, `$a`)
 — there is no `$this` — and it is bound by value, so they never mutate the
@@ -166,15 +209,40 @@ this library uses directly:
   model delegates of one or more arguments (a zero-argument supplier is not
   expressible via a pack).
 
-Two restrictions remain, and the API is shaped around them:
+A class type parameter **can** be used as a generic argument — in parameter
+types, return types, and `new` expressions alike. So `Sequence<T>` is a valid
+parameter type (`Sequence::appendSequence(Sequence<T> $other)` rejects a
+wrong-typed sequence at the call boundary), and `Map<V>` can return `Sequence<V>`.
+A class type parameter and a *method* type parameter may also appear in the same
+generic argument list, which is what makes `map<U>(Func<T, U>)` expressible.
 
-- A **type parameter may not be used as a generic argument** — `Sequence<V>`
-  cannot appear inside `Map<V>`'s body, so `Map::values()` returns `list<V>` and
-  `append()` takes `iterable` (re-enforcing `T` through `push()`) rather than
-  `Sequence<T>`.
-- Methods returning "the same instantiation" are typed **`static`** (the
-  late-static-bound `Sequence<int>`), because `self` in a type position names the
-  bare template.
+The one restriction still in force: a type parameter must be a **direct** generic
+argument, never **nested inside another** one.
+
+```php
+public function map<U>(Func<T, U> $fn): Sequence<U> {}          // OK — direct
+public function map<U>(Func<Pair<string, T>, Pair<string, U>> $fn) {}
+// Fatal error: Cannot use type parameter T as a generic type argument
+//              (type arguments must be concrete in this version)
+```
+
+This is why `Map` offers `mapValues<W>` rather than a full entry map: the
+`Func<Pair<string, V>, Pair<string, W>>` that a key+value map would need is one
+level too deep.
+
+A related consequence: a type that is meant to be *used as a generic argument*
+should not be a module member, because a module-qualified name (`NL:>Foo`) cannot
+appear inside a generic argument list. That is why `ComparisonResult` is a plain
+import rather than an export — its whole job is to be a `Func` type argument.
+
+A type parameter must be a **direct** generic argument, though — it cannot be
+nested inside another generic argument. `Func<V, bool>` is fine;
+`Func<KeyValuePair<string, V>, …>` is not ("type arguments must be concrete"),
+which is why `Map` has no key-and-value entry map.
+
+One small thing to know: `self` in a **type position** names the bare template,
+not the instantiation, so methods returning "the same instantiation" are typed
+**`static`** (equivalent to a parameterized `Sequence<T>` return, and shorter).
 
 ## Optional dependencies via conditional extensions
 
@@ -244,6 +312,15 @@ Building this library surfaced two integration gaps between features. Both were
    `protected`/`private` access was denied (only `public` slipped through). Direct
    `$obj->method()` calls were unaffected. Fixed — `Map<V>`, `Range`, and
    `foreach` over `Sequence`/`Map` all work as a result.
+3. **Heap corruption on a generic method with a mixed-parameter signature** —
+   *fixed*. A generic method whose parameter type is a generic instantiation
+   combining the **class** type parameter and the **method** type parameter
+   (`function m<W>(Func<V, W> $f)`) produced correct output and then died at
+   shutdown with `zend_mm_heap corrupted`. `Func<V, int>` (class param only),
+   `Func<int, W>` (method param only), and the same signature on a *non-generic*
+   method were all clean — only the combination corrupted, in the two-level
+   signature substitution. Fixed — this is what lets `Sequence::map<U>()`,
+   `Sequence::reduce<U>()`, and `Map::mapValues<W>()` take typed delegates.
 
 ## Layout
 
